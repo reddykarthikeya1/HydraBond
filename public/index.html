@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HydraBond - Multi-Network Bandwidth Pooling</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo-wrapper">
+        <svg class="hydra-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="22" stroke="url(#logo-grad)" stroke-width="2.5" stroke-dasharray="4 2"/>
+          <path d="M24 10V38M14 18L34 30M34 18L14 30" stroke="#00f5d4" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="24" cy="24" r="6" fill="#8338ec" filter="drop-shadow(0 0 8px #8338ec)"/>
+          <circle cx="14" cy="18" r="3.5" fill="#00f5d4"/>
+          <circle cx="34" cy="18" r="3.5" fill="#00f5d4"/>
+          <circle cx="24" cy="10" r="3.5" fill="#00f5d4"/>
+          <defs>
+            <linearGradient id="logo-grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#00f5d4"/>
+              <stop offset="1" stop-color="#8338ec"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="glow-orb"></div>
+      </div>
+      <div class="brand-text">
+        <div class="brand-title">HYDRABOND</div>
+        <div class="brand-sub">Universal Bandwidth Pooling <span class="author-tag">by Karthikeya Reddy</span></div>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <div id="pooling-status-pill" class="status-pill waiting">
+        <span class="status-dot"></span>
+        <span id="pooling-status-text">INITIALIZING...</span>
+      </div>
+
+      <div class="proxy-switch-container">
+        <span class="switch-label">System-Wide Boost</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="system-proxy-toggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <button id="btn-exit-app" class="exit-btn" title="Exit HydraBond & Restore Network">✕</button>
+    </div>
+  </header>
+
+  <!-- Main Bandwidth Pooling Stage -->
+  <main class="pooling-stage">
+    <!-- Left: Connected Devices Pool Sources -->
+    <section class="stage-col devices-col">
+      <div class="col-header">
+        <span class="col-title">CONNECTED ADAPTERS</span>
+        <span id="adapter-count-badge" class="count-badge">0 Active</span>
+      </div>
+
+      <div id="devices-list" class="devices-list">
+        <!-- Dynamically populated -->
+        <div class="device-skeleton">Scanning for network adapters...</div>
+      </div>
+    </section>
+
+    <!-- Center: Convergence Flow Graphic -->
+    <section class="stage-col convergence-col">
+      <div class="convergence-graphic">
+        <svg id="flow-svg" class="flow-svg" viewBox="0 0 200 300" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="beam-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#00f5d4" stop-opacity="0.8"/>
+              <stop offset="100%" stop-color="#8338ec" stop-opacity="1"/>
+            </linearGradient>
+          </defs>
+          <path id="flow-beam-1" class="flow-beam" d="M 10 70 Q 100 70 190 150"/>
+          <path id="flow-beam-2" class="flow-beam" d="M 10 230 Q 100 230 190 150"/>
+        </svg>
+        <div class="pulse-particles">
+          <span class="particle p1"></span>
+          <span class="particle p2"></span>
+          <span class="particle p3"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Aggregated Pool Core -->
+    <section class="stage-col core-col">
+      <div class="col-header">
+        <span class="col-title">AGGREGATED BANDWIDTH POOL</span>
+        <span id="pool-health-badge" class="count-badge ready">Optimal</span>
+      </div>
+
+      <div class="pool-core-card">
+        <div class="core-radial-meter">
+          <svg class="radial-svg" viewBox="0 0 160 160">
+            <circle class="meter-bg" cx="80" cy="80" r="70"/>
+            <circle id="meter-fill" class="meter-fill" cx="80" cy="80" r="70"/>
+          </svg>
+          <div class="core-speed-readout">
+            <div id="total-speed-val" class="speed-num">0.0</div>
+            <div class="speed-unit">Mbps Combined</div>
+            <div id="total-mbs-val" class="speed-sub">0.0 MB/s</div>
+          </div>
+        </div>
+
+        <div class="core-metrics-row">
+          <div class="metric-item">
+            <div class="metric-label">Efficiency</div>
+            <div id="efficiency-metric" class="metric-value">99.4%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Multiplier</div>
+            <div id="multiplier-metric" class="metric-value highlight">~1.0x</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Session Data</div>
+            <div id="session-data-val" class="metric-value">0 MB</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Quick Action Dock -->
+  <section class="action-dock">
+    <button id="btn-launch-hydra" class="action-btn primary-action">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      <span>Launch Hydra with Boost</span>
+    </button>
+
+    <button id="btn-run-benchmark" class="action-btn">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+      <span>Run Live Benchmark</span>
+    </button>
+
+    <button id="btn-open-speedtest" class="action-btn">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+      <span>Open Speedtest</span>
+    </button>
+  </section>
+
+  <!-- Live Traffic Activity Feed -->
+  <footer class="activity-drawer">
+    <div class="drawer-header">
+      <span class="drawer-title">⚡ REAL-TIME TRAFFIC BALANCING FEED</span>
+      <span id="active-sockets-tag" class="drawer-tag">0 Active Streams</span>
+    </div>
+    <div id="feed-list" class="feed-list">
+      <div class="feed-empty">Waiting for network traffic... Open any download, Hydra, or Speedtest.</div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
