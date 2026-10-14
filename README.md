@@ -1,5 +1,7 @@
 # HydraBond
 
+<img src="logo.png" width="96" alt="HydraBond logo">
+
 Windows app that **pools several internet connections** (Wi-Fi, Ethernet, a USB-tethered phone, ...) into one.
 Adapters feed into a central hub that shows your combined Mbps live; new connections are spread across every
 enabled adapter, least-busy first, with automatic retry on another adapter if one fails.
@@ -10,14 +12,14 @@ By Karthikeya Reddy.
 
 1. Install [Node.js](https://nodejs.org) (the engine runs on it).
 2. Double-click `HydraBond.exe`.
-3. Flip **System Proxy** on in the header to route Windows apps through the pool, or point any app at
-   SOCKS5 `127.0.0.1:1080` / HTTP proxy `127.0.0.1:8080`.
+3. Flip **Boost all apps** on in the header so every app on the PC uses the combined connections.
+   (Advanced: you can also point an app at SOCKS5 `127.0.0.1:1080` / HTTP proxy `127.0.0.1:8080`.)
 
 Each adapter has a switch to include/exclude it from the pool. Any number of adapters is supported.
 
-## Your proxy settings are always put back
+## Your internet settings are always put back
 
-Your original Windows proxy settings are saved before HydraBond changes them and restored when:
+Boost works by pointing Windows at HydraBond's local proxy. Your original Windows proxy settings are saved before HydraBond changes them and restored when:
 
 | Situation | Handled by |
 |---|---|
@@ -34,6 +36,8 @@ Manual escape hatch: `node server.js --restore`. Logs: `%APPDATA%\HydraBond\hydr
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
+
+`make-icon.ps1` regenerates the app icon and `logo.png`.
 
 Only the .NET Framework that ships with Windows is needed (`csc.exe`, WPF). The UI is `HydraBondApp.cs`;
 the engine is `server.js` (no npm dependencies).

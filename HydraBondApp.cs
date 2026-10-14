@@ -141,10 +141,10 @@ namespace HydraBond {
             if ((DateTime.UtcNow - windowStart).TotalSeconds > 60) { windowStart = DateTime.UtcNow; restarts = 0; }
             restarts++;
             if (restarts > 5) {
-                Say("The engine keeps stopping. System proxy was restored. Check %APPDATA%\\HydraBond\\hydrabond.log", true);
+                Say("HydraBond's engine keeps stopping. Your normal internet settings were restored. Details: %APPDATA%\\HydraBond\\hydrabond.log", true);
                 return;
             }
-            Say("Engine stopped unexpectedly. Restarting... (system proxy restored)", true);
+            Say("HydraBond's engine stopped unexpectedly. Restarting it (your normal internet settings were restored).", true);
             Thread.Sleep(1000 * restarts);
             Start();
         }
@@ -233,6 +233,7 @@ namespace HydraBond {
         private Toggle proxySwitch;
         private TextBlock txtProxy;
         private DateTime proxyPendingUntil = DateTime.MinValue;
+        private bool boostOn;
         private Border banner;
         private TextBlock bannerText;
 
@@ -344,7 +345,10 @@ namespace HydraBond {
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             StackPanel brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            brand.Children.Add(Tb("HydraBond", 16, Theme.Text, FontWeights.Bold));
+            brand.Children.Add(BuildLogo());
+            TextBlock title = Tb("HydraBond", 16, Theme.Text, FontWeights.Bold);
+            title.Margin = new Thickness(9, 0, 0, 0);
+            brand.Children.Add(title);
             Border ver = new Border { CornerRadius = new CornerRadius(4), Background = Theme.Line, Padding = new Thickness(6, 1, 6, 2), Margin = new Thickness(10, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             ver.Child = Tb("v1.1", 11, Theme.Muted, FontWeights.Medium);
             brand.Children.Add(ver);
@@ -364,9 +368,11 @@ namespace HydraBond {
             right.Children.Add(pill);
 
             StackPanel sw = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 18, 0), VerticalAlignment = VerticalAlignment.Center };
-            txtProxy = Tb("System Proxy: OFF", 12, Theme.Muted, FontWeights.Medium);
+            txtProxy = Tb("Boost all apps", 12, Theme.Muted, FontWeights.Medium);
             txtProxy.Margin = new Thickness(0, 0, 9, 0); txtProxy.VerticalAlignment = VerticalAlignment.Center;
             proxySwitch = new Toggle();
+            string tip = "When on, every app on this PC uses your combined connections.\nTurning it off - or closing HydraBond - puts your normal internet settings back.";
+            proxySwitch.ToolTip = tip; txtProxy.ToolTip = tip;
             proxySwitch.Clicked = delegate(bool want) { SetProxy(want); };
             sw.Children.Add(txtProxy); sw.Children.Add(proxySwitch);
             right.Children.Add(sw);
@@ -377,6 +383,24 @@ namespace HydraBond {
 
             bar.Child = g;
             return bar;
+        }
+
+        // App mark: three adapter streams merging into a hub, one pooled stream out.
+        private static UIElement BuildLogo() {
+            Canvas c = new Canvas { Width = 40, Height = 40 };
+            Border tile = new Border { Width = 40, Height = 40, CornerRadius = new CornerRadius(9), Background = Theme.Card2, BorderBrush = Theme.Line2, BorderThickness = new Thickness(0.6) };
+            c.Children.Add(tile);
+            string[] geo = new string[] { "M6,10 C13,10 12,20 16,20", "M6,20 L16,20", "M6,30 C13,30 12,20 16,20", "M27.2,20 L34,20" };
+            Brush[] col = new Brush[] { new SolidColorBrush(Theme.Palette[0]), new SolidColorBrush(Theme.Palette[1]), new SolidColorBrush(Theme.Palette[2]), Theme.Text };
+            for (int i = 0; i < geo.Length; i++) {
+                c.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse(geo[i]), Stroke = col[i], StrokeThickness = 2.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round });
+            }
+            System.Windows.Shapes.Ellipse ring = new System.Windows.Shapes.Ellipse { Width = 10.4, Height = 10.4, Stroke = Theme.Text, StrokeThickness = 2.2 };
+            Canvas.SetLeft(ring, 15.8); Canvas.SetTop(ring, 14.8);
+            System.Windows.Shapes.Ellipse dot = new System.Windows.Shapes.Ellipse { Width = 4.4, Height = 4.4, Fill = Theme.Text };
+            Canvas.SetLeft(dot, 18.8); Canvas.SetTop(dot, 17.8);
+            c.Children.Add(ring); c.Children.Add(dot);
+            return new Viewbox { Width = 28, Height = 28, Child = c, VerticalAlignment = VerticalAlignment.Center };
         }
 
         private Border IconButton(string glyph, Action onClick, bool danger) {
@@ -500,15 +524,15 @@ namespace HydraBond {
         }
 
         private void SetProxy(bool want) {
-            proxySwitch.SetOn(want);
-            txtProxy.Text = "System Proxy: " + (want ? "ON" : "OFF");
+            proxySwitch.SetOn(want); boostOn = want;
+            txtProxy.Text = "Boost all apps";
             txtProxy.Foreground = want ? Theme.Text : Theme.Muted;
             proxyPendingUntil = DateTime.UtcNow.AddSeconds(2);
             ThreadPool.QueueUserWorkItem(delegate {
                 string err = null;
                 try { Api.Call("POST", "/api/proxy", "{\"enabled\":" + (want ? "true" : "false") + "}", 8000); }
                 catch (WebException ex) {
-                    err = "Could not change the system proxy.";
+                    err = "Couldn't switch Boost " + (want ? "on" : "off") + ".";
                     try {
                         if (ex.Response != null) {
                             using (System.IO.StreamReader sr = new System.IO.StreamReader(ex.Response.GetResponseStream())) {
@@ -517,7 +541,7 @@ namespace HydraBond {
                             }
                         }
                     } catch { }
-                } catch { err = "Could not change the system proxy."; }
+                } catch { err = "Couldn't switch Boost " + (want ? "on" : "off") + "."; }
                 Dispatcher.BeginInvoke(new Action(delegate {
                     if (err != null) { proxyPendingUntil = DateTime.MinValue; SetBanner(err, true); }
                     Poll();
@@ -593,7 +617,7 @@ namespace HydraBond {
             if (DateTime.UtcNow > proxyPendingUntil) {
                 bool on = Bool(d["systemProxyEnabled"]);
                 proxySwitch.SetOn(on);
-                txtProxy.Text = "System Proxy: " + (on ? "ON" : "OFF");
+                txtProxy.Text = "Boost all apps"; boostOn = on;
                 txtProxy.Foreground = on ? Theme.Text : Theme.Muted;
             }
 
@@ -644,7 +668,8 @@ namespace HydraBond {
             anyTraffic = total > 0.05;
             txtMBs.Text = Num(d["totalMBs"]).ToString("0.0") + " MB/s";
             if (devices.Count == 0) txtCaption.Text = "";
-            else if (pooled >= 2) txtCaption.Text = "Spreading connections across " + pooled + " adapters";
+            else if (pooled >= 2 && boostOn) txtCaption.Text = "Spreading your internet across " + pooled + " connections";
+            else if (pooled >= 2) txtCaption.Text = "Switch on \"Boost all apps\" to start combining your connections";
             else txtCaption.Text = "Plug in a phone (USB tethering) or join another network to start pooling";
             txtEmpty.Visibility = devices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             ghostOn = devices.Count == 1;
@@ -737,7 +762,7 @@ namespace HydraBond {
             if (list == null || list.Count == 0) {
                 if (feed.Children.Count == 0 || lastFeedId != -1) {
                     feed.Children.Clear();
-                    feed.Children.Add(Tb("Waiting for traffic. Turn on System Proxy, or point an app at SOCKS5 127.0.0.1:1080.", 11.5, Theme.Dim, null));
+                    feed.Children.Add(Tb("Nothing to show yet. Switch on \"Boost all apps\" (top right) and use the internet as usual.", 11.5, Theme.Dim, null));
                     lastFeedId = -1;
                 }
                 return;
@@ -923,7 +948,7 @@ namespace HydraBond {
             using (Mutex single = new Mutex(true, "Local\\HydraBond.App.SingleInstance", out created)) {
                 if (!created) return;
 
-                // Last-chance paths: make sure the system proxy never outlives the app.
+                // Last-chance paths: make sure Boost never outlives the app.
                 AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs ex) {
                     Log(Convert.ToString(ex.ExceptionObject));
                     try { if (win != null) win.Cleanup(); } catch { }

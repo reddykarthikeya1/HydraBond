@@ -125,6 +125,9 @@ function enableSystemProxy() {
   if (!state) {
     const original = {};
     for (const n of PROXY_VALUES) original[n] = regGet(n);
+    // A leftover HydraBond address with the proxy switched off is not the user's setting.
+    const en = original.ProxyEnable;
+    if (original.ProxyServer && original.ProxyServer.value === OUR_PROXY && !(en && en.value === 1)) original.ProxyServer = null;
     state = { version: 1, savedAt: new Date().toISOString(), original };
   }
   state.ownerPid = PARENT_PID || process.pid;
@@ -158,6 +161,17 @@ function restoreSystemProxy(reason) {
 }
 
 // Crash left our proxy enabled but no snapshot to go by (older version, deleted file).
+// Removes a leftover HydraBond proxy address (e.g. from an older version) once the proxy is off.
+function cleanLeftover() {
+  const en = regGet('ProxyEnable');
+  const srv = regGet('ProxyServer');
+  if (srv && srv.value === OUR_PROXY && !(en && en.value === 1)) {
+    regDelete('ProxyServer');
+    refreshProxySettings(false);
+    log('Removed leftover HydraBond proxy address');
+  }
+}
+
 function recoverOrphanedProxy() {
   if (readState()) {
     restoreSystemProxy('stale state from previous run');
@@ -169,6 +183,8 @@ function recoverOrphanedProxy() {
     regSet('ProxyEnable', 'REG_DWORD', 0);
     refreshProxySettings(false);
     log('Disabled orphaned HydraBond system proxy');
+  } else {
+    cleanLeftover();
   }
 }
 
@@ -202,8 +218,9 @@ function ensureGuardian() {
   // process - otherwise "kill process tree" would take it down too.
   const cmd = `start "" /B "${process.execPath}" "${__filename}" --guard ${watch}`;
   try {
+    // (not 'detached': that would make Windows open a visible console for the guardian)
     spawn('cmd.exe', ['/d', '/c', cmd], {
-      detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true
+      stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true
     }).on('error', e => log('Guardian spawn failed:', e.message)).unref();
   } catch (e) { log('Guardian spawn failed:', e.message); }
 }
@@ -687,10 +704,10 @@ function readBody(req, cb) {
 
 function setSystemProxy(enable) {
   if (enable) {
-    if (!httpReady) return { ok: false, error: `HTTP proxy port ${HTTP_PORT} is not available` };
+    if (!httpReady) return { ok: false, error: `Boost can't start: another program is using port ${HTTP_PORT}. Close it and restart HydraBond.` };
     const ok = enableSystemProxy();
     systemProxyEnabled = ok;
-    return { ok, error: ok ? '' : 'Could not update Windows proxy settings' };
+    return { ok, error: ok ? '' : 'Couldn\'t change your Windows internet settings' };
   }
   restoreSystemProxy('user');
   systemProxyEnabled = false;
@@ -852,7 +869,9 @@ function main() {
 }
 
 if (argv.includes('--restore')) {
-  console.log(restoreSystemProxy('cli') ? 'System proxy restored.' : 'Nothing to restore.');
+  const did = restoreSystemProxy('cli');
+  if (!did) cleanLeftover();
+  console.log(did ? 'System proxy restored.' : 'Nothing to restore.');
   process.exit(0);
 } else if (argv[0] === '--guard') {
   runGuardian(parseInt(argv[1], 10));
