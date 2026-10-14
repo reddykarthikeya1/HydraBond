@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -77,6 +78,47 @@ namespace HydraBond {
             using (WebResponse r = rq.GetResponse())
             using (System.IO.StreamReader sr = new System.IO.StreamReader(r.GetResponseStream()))
                 return sr.ReadToEnd();
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Live per-adapter speed straight from Windows' interface counters, so every
+    // adapter shows its real speed whether or not traffic goes through Boost.
+    // ------------------------------------------------------------------
+    class NetMonitor {
+        private class Snap { public long Rx, Tx; public DateTime At; }
+        private readonly Dictionary<string, Snap> last = new Dictionary<string, Snap>();
+        private Dictionary<string, double[]> lastResult = new Dictionary<string, double[]>();
+
+        // ip -> { downMbps, upMbps }
+        public Dictionary<string, double[]> Sample() {
+            DateTime now = DateTime.UtcNow;
+            Dictionary<string, double[]> res = new Dictionary<string, double[]>();
+            bool tooSoon = false;
+            try {
+                foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces()) {
+                    try {
+                        if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                        IPv4InterfaceStatistics st = ni.GetIPv4Statistics();
+                        foreach (UnicastIPAddressInformation ua in ni.GetIPProperties().UnicastAddresses) {
+                            if (ua.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                            string ip = ua.Address.ToString();
+                            Snap prev;
+                            if (last.TryGetValue(ip, out prev)) {
+                                double secs = (now - prev.At).TotalSeconds;
+                                if (secs < 0.6) { tooSoon = true; continue; }
+                                double down = Math.Max(0, (st.BytesReceived - prev.Rx) * 8.0 / 1e6 / secs);
+                                double up = Math.Max(0, (st.BytesSent - prev.Tx) * 8.0 / 1e6 / secs);
+                                res[ip] = new double[] { down, up };
+                            }
+                            last[ip] = new Snap { Rx = st.BytesReceived, Tx = st.BytesSent, At = now };
+                        }
+                    } catch { }
+                }
+            } catch { }
+            if (tooSoon) return lastResult;
+            lastResult = res;
+            return res;
         }
     }
 
@@ -213,7 +255,7 @@ namespace HydraBond {
         public System.Windows.Shapes.Path Flow;
         public System.Windows.Shapes.Path Arc;
         public bool Enabled = true;
-        public double SpeedMbps, Share;
+        public double SpeedMbps, Share, Down, Up;
     }
 
     // ------------------------------------------------------------------
@@ -221,6 +263,8 @@ namespace HydraBond {
     // ------------------------------------------------------------------
     public class MainWindow : Window {
         private readonly Engine engine = new Engine();
+        private readonly NetMonitor monitor = new NetMonitor();
+        private double peakSeen;
         private readonly JavaScriptSerializer json = new JavaScriptSerializer();
         private DispatcherTimer timer;
         private bool polling;
@@ -430,7 +474,7 @@ namespace HydraBond {
             hubCenter = new Grid();
             StackPanel cs = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
             txtTotal = Tb("0.0", 40, Theme.Text, FontWeights.Bold); txtTotal.HorizontalAlignment = HorizontalAlignment.Center;
-            txtUnit = Tb("Mbps pooled", 12, Theme.Muted, FontWeights.SemiBold); txtUnit.HorizontalAlignment = HorizontalAlignment.Center;
+            txtUnit = Tb("Mbps combined", 12, Theme.Muted, FontWeights.SemiBold); txtUnit.HorizontalAlignment = HorizontalAlignment.Center;
             txtMBs = Tb("0.0 MB/s", 12, Theme.Dim, null); txtMBs.HorizontalAlignment = HorizontalAlignment.Center; txtMBs.Margin = new Thickness(0, 2, 0, 0);
             cs.Children.Add(txtTotal); cs.Children.Add(txtUnit); cs.Children.Add(txtMBs);
             hubCenter.Children.Add(cs);
@@ -505,6 +549,7 @@ namespace HydraBond {
             if (polling) return;
             polling = true;
             ThreadPool.QueueUserWorkItem(delegate {
+                Dictionary<string, double[]> speeds = monitor.Sample();
                 Dictionary<string, object> data = null;
                 try {
                     string raw = Api.Call("GET", "/api/stats", null, 2000);
@@ -518,7 +563,7 @@ namespace HydraBond {
                         return;
                     }
                     failedPolls = 0;
-                    try { UpdateView(data); } catch { }
+                    try { UpdateView(data, speeds); } catch { }
                 }));
             });
         }
@@ -603,10 +648,10 @@ namespace HydraBond {
         }
 
         // ---------------- view update ----------------
-        private void UpdateView(Dictionary<string, object> d) {
+        private void UpdateView(Dictionary<string, object> d, Dictionary<string, double[]> sp) {
             IList devices = d["devices"] as IList ?? new ArrayList();
             int pooled = (int)Num(d["pooledCount"]);
-            double total = Num(d["totalSpeedMbps"]);
+            double total = 0;
 
             // status pill
             if (devices.Count == 0) { dotStatus.Fill = Theme.Red; txtStatus.Text = "No network adapters"; }
@@ -640,16 +685,19 @@ namespace HydraBond {
 
                 string status = Str(dev["status"]);
                 n.Enabled = Bool(dev["enabled"]);
-                n.SpeedMbps = Num(dev["speedMbps"]);
-                n.Share = n.Enabled ? Num(dev["share"]) : 0;
+                double down = Num(dev["downMbps"]), up = Num(dev["upMbps"]);
+                double[] meas;
+                if (sp != null && sp.TryGetValue(ip, out meas)) { down = meas[0]; up = meas[1]; }
+                n.Down = down; n.Up = up; n.SpeedMbps = down + up;
+                if (status == "active" || status == "idle") status = n.SpeedMbps > 0.05 ? "active" : "idle";
                 colorByName[Str(dev["name"])] = n.Accent;
                 n.Name.Text = Str(dev["name"]);
                 n.Icon.Text = GlyphFor(Str(dev["icon"]));
                 n.Sub.Text = Str(dev["type"]) + "  •  " + ip;
                 n.Speed.Text = MbpsText(n.SpeedMbps) + " Mbps";
-                n.Rate.Text = "↓ " + MbpsText(Num(dev["downMbps"])) + "   ↑ " + MbpsText(Num(dev["upMbps"]));
+                n.Rate.Text = "↓ " + MbpsText(down) + "   ↑ " + MbpsText(up);
                 n.Sw.SetOn(n.Enabled);
-                n.Card.Opacity = n.Enabled ? 1.0 : 0.5;
+                n.Card.Opacity = n.Enabled ? 1.0 : 0.65;
                 switch (status) {
                     case "active": n.Status.Text = "Active"; n.Status.Foreground = Theme.Green; break;
                     case "idle": n.Status.Text = "Idle"; n.Status.Foreground = Theme.Muted; break;
@@ -663,23 +711,31 @@ namespace HydraBond {
             foreach (string ip in gone) RemoveNode(nodeByIp[ip]);
             nodes.Clear(); nodes.AddRange(ordered);
 
+            // The pool total counts only adapters that are switched on; every adapter still shows its own speed.
+            double sumDown = 0, sumUp = 0;
+            foreach (DeviceNode nn in nodes) if (nn.Enabled) { sumDown += nn.Down; sumUp += nn.Up; }
+            total = sumDown + sumUp;
+            foreach (DeviceNode nn in nodes) nn.Share = (nn.Enabled && total > 0.05) ? nn.SpeedMbps / total : 0;
+            if (total > peakSeen) peakSeen = total;
+
             // hub
             totalTarget = total;
             anyTraffic = total > 0.05;
-            txtMBs.Text = Num(d["totalMBs"]).ToString("0.0") + " MB/s";
+            txtMBs.Text = (total / 8).ToString("0.0") + " MB/s";
             if (devices.Count == 0) txtCaption.Text = "";
             else if (pooled >= 2 && boostOn) txtCaption.Text = "Spreading your internet across " + pooled + " connections";
             else if (pooled >= 2) txtCaption.Text = "Switch on \"Boost all apps\" to start combining your connections";
+            else if (devices.Count >= 2) txtCaption.Text = "Switch on at least two adapters to combine them";
             else txtCaption.Text = "Plug in a phone (USB tethering) or join another network to start pooling";
             txtEmpty.Visibility = devices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             ghostOn = devices.Count == 1;
             ghostCard.Visibility = ghostFlow.Visibility = ghostOn ? Visibility.Visible : Visibility.Collapsed;
 
             // stats
-            stDown.Text = MbpsText(Num(d["downMbps"])) + " Mbps";
-            stUp.Text = MbpsText(Num(d["upMbps"])) + " Mbps";
+            stDown.Text = MbpsText(sumDown) + " Mbps";
+            stUp.Text = MbpsText(sumUp) + " Mbps";
             stSession.Text = Bytes(Num(d["totalBytesTransferred"]));
-            stPeak.Text = MbpsText(Num(d["peakMbps"])) + " Mbps";
+            stPeak.Text = MbpsText(peakSeen) + " Mbps";
             stStreams.Text = ((int)Num(d["activeSockets"])).ToString();
             stUptime.Text = Uptime(Num(d["uptimeSec"]));
 
