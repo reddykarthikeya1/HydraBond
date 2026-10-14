@@ -208,7 +208,7 @@ namespace HydraBond {
             try { Api.Call("POST", "/api/exit", "{}", 1500); } catch { }
             try {
                 if (proc != null && !proc.HasExited) {
-                    if (!proc.WaitForExit(3000)) proc.Kill();
+                    if (!proc.WaitForExit(8000)) proc.Kill();
                 }
             } catch { }
             RunRestore(); // safety net - no-op when the engine already restored
@@ -231,9 +231,14 @@ namespace HydraBond {
             Cursor = Cursors.Hand;
             thumb = new Ellipse { Width = 14, Height = 14, Fill = Theme.Text, HorizontalAlignment = HorizontalAlignment.Left };
             Child = thumb;
+            bool armed = false;
+            MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e) { e.Handled = true; armed = true; CaptureMouse(); };
             MouseLeftButtonUp += delegate(object s, MouseButtonEventArgs e) {
                 e.Handled = true;
-                if (Clicked != null) Clicked(!on);
+                ReleaseMouseCapture();
+                bool inside = IsMouseOver;
+                if (armed && inside && Clicked != null) Clicked(!on);
+                armed = false;
             };
             SetOn(false);
         }
@@ -417,6 +422,9 @@ namespace HydraBond {
             proxySwitch = new Toggle();
             string tip = "When on, every app on this PC uses your combined connections.\nTurning it off - or closing HydraBond - puts your normal internet settings back.";
             proxySwitch.ToolTip = tip; txtProxy.ToolTip = tip;
+            txtProxy.Cursor = Cursors.Hand;
+            txtProxy.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e) { e.Handled = true; };
+            txtProxy.MouseLeftButtonUp += delegate(object s, MouseButtonEventArgs e) { e.Handled = true; SetProxy(!proxySwitch.On); };
             proxySwitch.Clicked = delegate(bool want) { SetProxy(want); };
             sw.Children.Add(txtProxy); sw.Children.Add(proxySwitch);
             right.Children.Add(sw);
@@ -453,7 +461,15 @@ namespace HydraBond {
             b.Child = t;
             b.MouseEnter += delegate { b.Background = danger ? Theme.Red : Theme.Line; t.Foreground = Theme.Text; };
             b.MouseLeave += delegate { b.Background = Brushes.Transparent; t.Foreground = Theme.Muted; };
-            b.MouseLeftButtonUp += delegate { onClick(); };
+            bool armed = false;
+            b.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e) { e.Handled = true; armed = true; b.CaptureMouse(); };
+            b.MouseLeftButtonUp += delegate(object s, MouseButtonEventArgs e) {
+                e.Handled = true;
+                b.ReleaseMouseCapture();
+                bool inside = b.IsMouseOver;
+                if (armed && inside) onClick();
+                armed = false;
+            };
             return b;
         }
 

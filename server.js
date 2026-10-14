@@ -618,9 +618,11 @@ setInterval(() => {
   broadcastStats();
 }, 1000);
 
+let lastProxyChange = 0;
 function checkSystemProxy() {
+  const t0 = Date.now();
   execFile('reg', ['query', INET_KEY], { windowsHide: true, timeout: 5000 }, (err, stdout) => {
-    if (err || !stdout) return;
+    if (err || !stdout || t0 < lastProxyChange) return; // ignore a read that predates a toggle
     const en = /ProxyEnable\s+REG_DWORD\s+(0x[0-9a-f]+)/i.exec(stdout);
     const srv = /ProxyServer\s+REG_SZ\s+(\S+)/i.exec(stdout);
     systemProxyEnabled = !!(en && parseInt(en[1], 16) === 1 && srv && srv[1] === OUR_PROXY);
@@ -703,6 +705,7 @@ function readBody(req, cb) {
 }
 
 function setSystemProxy(enable) {
+  lastProxyChange = Date.now();
   if (enable) {
     if (!httpReady) return { ok: false, error: `Boost can't start: another program is using port ${HTTP_PORT}. Close it and restart HydraBond.` };
     const ok = enableSystemProxy();
@@ -743,6 +746,7 @@ const webServer = http.createServer((req, res) => {
 
   if ((url === '/api/proxy' || url === '/api/proxy/toggle') && req.method === 'POST') {
     return readBody(req, body => {
+      log('API', url, JSON.stringify(body), 'currently', systemProxyEnabled ? 'on' : 'off');
       const want = url === '/api/proxy/toggle' || typeof body.enabled !== 'boolean' ? !systemProxyEnabled : body.enabled;
       const r = setSystemProxy(want);
       broadcastStats();
